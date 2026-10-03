@@ -15,6 +15,15 @@ import (
 // Test that panics print out the underlying value
 // when the underlying kind is directly printable.
 // Issue: https://golang.org/issues/37531
+
+// Test types for issue 81959. W embeds T by value, so (*W).m is a
+// compiler-generated promoted-method wrapper.
+type panic81959Interface interface{ m() panic81959Interface }
+type panic81959T struct{}
+type panic81959W struct{ panic81959T }
+
+func (*panic81959T) m() panic81959Interface { return nil }
+
 func TestPanicWithDirectlyPrintableCustomTypes(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -154,4 +163,24 @@ func TestPanicNilErrorPrefix(t *testing.T) {
 			tt.fn()
 		})
 	}
+}
+
+
+// TestPromotedMethodPanicWithRace reproduces golang.org/issue/81959.
+//
+// On Go 1.27+ with -race on affected platforms, the nil dereference in the
+// compiler-generated promoted-method wrapper can make panic unwinding fail
+// with "traceback did not unwind completely" instead of reaching recover.
+func TestPromotedMethodPanicWithRace(t *testing.T) {
+	call := func(i panic81959Interface) panic81959Interface {
+		defer func() {}
+		return i.m()
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("panic was not recovered")
+		}
+	}()
+	call((*panic81959W)(nil))
 }
