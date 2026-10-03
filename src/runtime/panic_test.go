@@ -172,10 +172,6 @@ func TestPanicNilErrorPrefix(t *testing.T) {
 // compiler-generated promoted-method wrapper can make panic unwinding fail
 // with "traceback did not unwind completely" instead of reaching recover.
 func TestPromotedMethodPanicWithRace(t *testing.T) {
-	if !raceenabled {
-		t.Skip("requires -race")
-	}
-
 	call := func(i panic81959Interface) panic81959Interface {
 		defer func() {}
 		return i.m()
