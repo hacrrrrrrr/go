@@ -15,6 +15,15 @@ import (
 // Test that panics print out the underlying value
 // when the underlying kind is directly printable.
 // Issue: https://golang.org/issues/37531
+
+// Test types for issue 81959. W embeds T by value, so (*W).m is a
+// compiler-generated promoted-method wrapper.
+type panic81959Interface interface{ m() panic81959Interface }
+type panic81959T struct{}
+type panic81959W struct{ panic81959T }
+
+func (*panic81959T) m() panic81959Interface { return nil }
+
 func TestPanicWithDirectlyPrintableCustomTypes(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -162,24 +171,13 @@ func TestPanicNilErrorPrefix(t *testing.T) {
 // On Go 1.27+ with -race on affected platforms, the nil dereference in the
 // compiler-generated promoted-method wrapper can make panic unwinding fail
 // with "traceback did not unwind completely" instead of reaching recover.
-// Keep this test small so it can be used to validate runtime/compiler fixes.
 func TestPromotedMethodPanicWithRace(t *testing.T) {
 	if !raceenabled {
 		t.Skip("requires -race")
 	}
 
-	type I interface{ m() I }
-	type T struct{}
-	type W struct{ T }
-
-	funcT := func(t *T) I { return t }
-	_ = funcT // Keep the method type local to the test's generated wrapper.
-
-	// The method is declared on a local named type so (*W).m is a compiler-
-	// generated promoted-method wrapper.
-	var call func(I) I
-	call = func(i I) I {
-		defer func() {}()
+	call := func(i panic81959Interface) panic81959Interface {
+		defer func() {}
 		return i.m()
 	}
 
@@ -188,5 +186,5 @@ func TestPromotedMethodPanicWithRace(t *testing.T) {
 			t.Fatal("panic was not recovered")
 		}
 	}()
-	call((*W)(nil))
+	call((*panic81959W)(nil))
 }
