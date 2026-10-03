@@ -155,3 +155,38 @@ func TestPanicNilErrorPrefix(t *testing.T) {
 		})
 	}
 }
+
+
+// TestPromotedMethodPanicWithRace reproduces golang.org/issue/81959.
+//
+// On Go 1.27+ with -race on affected platforms, the nil dereference in the
+// compiler-generated promoted-method wrapper can make panic unwinding fail
+// with "traceback did not unwind completely" instead of reaching recover.
+// Keep this test small so it can be used to validate runtime/compiler fixes.
+func TestPromotedMethodPanicWithRace(t *testing.T) {
+	if !raceenabled {
+		t.Skip("requires -race")
+	}
+
+	type I interface{ m() I }
+	type T struct{}
+	type W struct{ T }
+
+	funcT := func(t *T) I { return t }
+	_ = funcT // Keep the method type local to the test's generated wrapper.
+
+	// The method is declared on a local named type so (*W).m is a compiler-
+	// generated promoted-method wrapper.
+	var call func(I) I
+	call = func(i I) I {
+		defer func() {}()
+		return i.m()
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("panic was not recovered")
+		}
+	}()
+	call((*W)(nil))
+}
